@@ -1,0 +1,13 @@
+name = "VeryBasicCNN"
+uuid = "c9feecb8-1d18-4161-a0c2-a0ce9d2dd5b6"
+authors = ["Shane Kuei-Hsien Chu (skchu@wustl.edu)"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.11.6"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

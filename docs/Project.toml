@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+VeryBasicCNN = "c9feecb8-1d18-4161-a0c2-a0ce9d2dd5b6"
