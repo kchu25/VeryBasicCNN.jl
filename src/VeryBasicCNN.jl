@@ -17,6 +17,7 @@ const output_function = Flux.NNlib.tanh
 
 # Hyperparameter utilities
 include("hyperparameters/defaults.jl")
+include("hyperparameters/ranges.jl")
 include("hyperparameters/random.jl")
 include("hyperparameters/getters.jl")
 include("hyperparameters/setters.jl")

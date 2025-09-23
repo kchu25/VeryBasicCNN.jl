@@ -385,7 +385,6 @@ function create_model(X_dim, Y_dim, batch_size::Int;
     end
 end
 
-
 """
     get_output_weights(model::SeqCNN)
 

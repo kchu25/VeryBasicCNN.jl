@@ -33,4 +33,31 @@ Base.@kwdef struct HyperParameters
 end
 
 
+"""
+Configuration struct for hyperparameter ranges with current defaults.
+"""
+@kwdef struct HyperParamRanges
+    # Architecture ranges
+    num_img_layers_range = 3:7
+    pfm_length_range = 6:15
+    num_base_filters_range = 256:12:512
+    conv_filter_range = 256:32:512
+    conv_filter_height_range = 2:5
+    
+    # Pooling ranges
+    pool_size_range = 1:2
+    stride_range = 1:2
+    
+    # Training ranges
+    batch_size_options = [64, 128, 256]
+    
+    # Fixed parameters
+    final_layer_filters = 48
+    base_pool_size = 1
+    base_stride = 1
+    softmax_alpha = SOFTMAX_ALPHA
+end
+
+# Default instance with current ranges
+const DEFAULT_RANGES = HyperParamRanges()
 
