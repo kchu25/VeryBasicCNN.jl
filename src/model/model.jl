@@ -327,6 +327,7 @@ struct SeqCNN
     function SeqCNN(hp, pwms, img_filters, output_weights, output_scalers)
         return new(hp, pwms, img_filters, output_weights, output_scalers)
     end
+
 end
 
 Flux.@layer SeqCNN
