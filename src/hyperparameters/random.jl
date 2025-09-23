@@ -1,5 +1,5 @@
 """
-    generate_random_hyperparameters(; batch_size=nothing, num_layers=6, seed=nothing)
+    generate_random_hyperparameters(; batch_size=nothing, rng=Random.GLOBAL_RNG, ranges=DEFAULT_RANGES)
 
 Generate random hyperparameters for CNN hyperparameter tuning experiments.
 
@@ -7,27 +7,26 @@ This function creates randomized but sensible hyperparameter configurations for
 biological sequence CNN training, useful for hyperparameter search and ablation studies.
 
 # Arguments
-- `batch_size`: Fixed batch size (if nothing, randomly selected from [64, 128, 256])
-- `num_layers`: Number of convolutional layers above base layer (default: 6)
-- `seed`: Random seed for reproducible parameter generation (optional)
+- `batch_size`: Fixed batch size (if nothing, randomly selected from available options in `ranges.batch_size_options`)
+- `rng`: Random number generator to use (default: `Random.GLOBAL_RNG`)
+- `ranges`: Struct containing parameter ranges and options (default: `DEFAULT_RANGES`)
 
 # Returns
 - `HyperParameters`: Randomized hyperparameter configuration
 
-# Parameter Ranges
-- `pfm_len`: 6-15 (motif length range typical for biological sequences)
-- `num_pfms`: 256-512 (step 12, base layer filter count)
-- `conv_filter_counts`: 256-512 (step 32, per layer filter counts)
-- `filter_heights`: 2-5 (typical for biological sequence convolution)
-- `pooling_sizes`: 1-2 (conservative pooling to preserve sequence info)
-- `strides`: 1 (preserve resolution, last layer has stride 1)
+# Parameter Ranges (from `ranges`)
+- `pfm_len`: motif length range (e.g., 6-15)
+- `num_pfms`: base layer filter count (e.g., 256-512)
+- `conv_filter_counts`: per-layer filter counts (e.g., 256-512)
+- `filter_heights`: filter heights for each conv layer (e.g., 2-5)
+- `pooling_sizes`: pooling sizes for each conv layer (e.g., 1-2)
+- `strides`: stride for each conv layer (e.g., 1)
 
 # Notes
-- Last conv layer uses 48 filters for consistency with final embedding
+- Last conv layer uses a fixed number of filters for compatibility with final embedding
 - Pooling parameters are conservative to avoid over-downsampling
 - All stride patterns end with 1 to preserve final resolution
 """
-
 function generate_random_hyperparameters(; 
     batch_size = nothing, 
     rng = Random.GLOBAL_RNG,

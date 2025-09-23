@@ -39,10 +39,10 @@ Configuration struct for hyperparameter ranges with current defaults.
 @kwdef struct HyperParamRanges
     # Architecture ranges
     num_img_layers_range = 3:7
-    pfm_length_range = 6:15
-    num_base_filters_range = 256:12:512
+    pfm_length_range = 3:15
+    num_base_filters_range = 72:12:512
     conv_filter_range = 256:32:512
-    conv_filter_height_range = 2:5
+    conv_filter_height_range = 1:5
     
     # Pooling ranges
     pool_size_range = 1:2
