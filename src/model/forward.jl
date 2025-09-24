@@ -115,40 +115,8 @@ function normalize_conv_filters_l2(filters; softmax_strength = SOFTMAX_ALPHA, us
     end
 end
 
-"""
-    cnn_feature_extraction(hyperparams, model, sequences; make_sparse=false)
 
-Extract CNN features from biological sequences through full forward pass.
-
-Performs: PWM base layer → pooling → conv layers → pooling → flatten to embedding vector
-
-# Arguments
-- `hyperparams`: CNN hyperparameters
-- `model`: Trained CNN model instance
-- `sequences`: Input biological sequences (GPU array)
-- `make_sparse`: Apply sparsity-inducing filter normalization
-
-# Returns
-- Flattened feature embedding (final_length, 1, batch_size)
-
-Note: 
-    All the hidden_layer_out, i.e. code in this mode is 
-    of the shape (code_length, num_filters_prev_layer, 1, batch_size);
-    this can be seen in the function apply_pooling_to_code (utils.jl).
-
-"""
-function cnn_feature_extraction(model::SeqCNN, sequences; 
-        make_sparse = false, 
-        output_hidden_layer::Union{Nothing, Int}=nothing
-        )
-    hidden_layer_out = nothing
-    # Base layer: PWM convolution
-    code = model.pwms(sequences)
-    
-    if output_hidden_layer == 1
-        hidden_layer_out = code
-    end
-
+function img_pass(model::SeqCNN, code; make_sparse=false)
     # Base layer pooling
     code_img = apply_pooling_to_code(
         code;
@@ -156,16 +124,10 @@ function cnn_feature_extraction(model::SeqCNN, sequences;
         stride = get_stride_tuple(model.hp, 0),
         is_base_layer = true,
     )
-
     # Process all convolutional layers
-    num_img_layers = length(model.hp.num_img_filters)
-    for layer_idx = 1:num_img_layers
+    for layer_idx = 1:model.num_img_layers
         # Convolution
         code = model.img_filters[layer_idx](code_img, model.hp; make_sparse = make_sparse)
-
-        if output_hidden_layer == layer_idx + 1
-            hidden_layer_out = code
-        end
 
         # Pooling (identity pooling for layers beyond pool_lvl_top)
         code_img = apply_pooling_to_code(
@@ -175,14 +137,24 @@ function cnn_feature_extraction(model::SeqCNN, sequences;
             identity = layer_idx > model.hp.pool_lvl_top,
         )
     end
-    
+    return code_img
+end
+
+function cnn_feature_extraction(model::SeqCNN, sequences; 
+        make_sparse = false, 
+        get_first_layer_code = false
+        )
+    # Base layer: PWM convolution
+    code = model.pwms(sequences)
+    code_img = img_pass(model, code; make_sparse=make_sparse)
+
     # Flatten to feature embedding vector
     embedding_length = size(code_img, 1) * size(code_img, 2)
     batch_size = size(code_img, 4)
     feature_embedding = reshape(code_img, (embedding_length, 1, batch_size))
 
-    if !isnothing(output_hidden_layer)
-        return feature_embedding, hidden_layer_out
+    if get_first_layer_code
+        return feature_embedding, code
     end
     return feature_embedding
 end
@@ -282,6 +254,10 @@ This enables convenient and familiar ML-style access to the batch size without s
 function Base.getproperty(m::SeqCNN, sym::Symbol)
     if sym === :batch_size
         return m.hp.batch_size
+    elseif sym === :num_img_layers
+        return length(m.hp.num_img_filters)
+    elseif sym === :first_layer_function
+    elseif sym === :first_layer_code
     else
         # need this line otherwise all other fields won't be accessible
         return getfield(m, sym)
