@@ -130,11 +130,25 @@ Performs: PWM base layer → pooling → conv layers → pooling → flatten to 
 
 # Returns
 - Flattened feature embedding (final_length, 1, batch_size)
+
+Note: 
+    All the hidden_layer_out, i.e. code in this mode is 
+    of the shape (code_length, num_filters_prev_layer, 1, batch_size);
+    this can be seen in the function apply_pooling_to_code (utils.jl).
+
 """
-function cnn_feature_extraction(model::SeqCNN, sequences; make_sparse = false)
+function cnn_feature_extraction(model::SeqCNN, sequences; 
+        make_sparse = false, 
+        output_hidden_layer::Union{Nothing, Int}=nothing
+        )
+    hidden_layer_out = nothing
     # Base layer: PWM convolution
     code = model.pwms(sequences)
     
+    if output_hidden_layer == 1
+        hidden_layer_out = code
+    end
+
     # Base layer pooling
     code_img = apply_pooling_to_code(
         code;
@@ -148,6 +162,10 @@ function cnn_feature_extraction(model::SeqCNN, sequences; make_sparse = false)
     for layer_idx = 1:num_img_layers
         # Convolution
         code = model.img_filters[layer_idx](code_img, model.hp; make_sparse = make_sparse)
+
+        if output_hidden_layer == layer_idx + 1
+            hidden_layer_out = code
+        end
 
         # Pooling (identity pooling for layers beyond pool_lvl_top)
         code_img = apply_pooling_to_code(
@@ -163,6 +181,9 @@ function cnn_feature_extraction(model::SeqCNN, sequences; make_sparse = false)
     batch_size = size(code_img, 4)
     feature_embedding = reshape(code_img, (embedding_length, 1, batch_size))
 
+    if !isnothing(output_hidden_layer)
+        return feature_embedding, hidden_layer_out
+    end
     return feature_embedding
 end
 
