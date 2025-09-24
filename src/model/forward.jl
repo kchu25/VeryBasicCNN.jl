@@ -181,14 +181,25 @@ Complete forward pass: CNN feature extraction → linear transformation → fina
 # Returns
 - Model predictions (output_dim, batch_size)
 """
-function predict_from_sequences(model::SeqCNN, sequences; make_sparse = false)
+function predict_from_sequences(model::SeqCNN, sequences; 
+        make_sparse = false, 
+        inference_position=nothing)
     # Extract CNN features from sequences
     feature_embedding = cnn_feature_extraction(
-        model, sequences; make_sparse = make_sparse)
+        model, sequences; make_sparse = make_sparse) # (final_embedding_length, 1, batch_size)
+
+    if isnothing(inference_position)
+        output_weights = model.output_weights
+    else
+        @assert 1 ≤ inference_position ≤ size(model.output_weights, 1) "inference_position out of bounds"
+        output_weights = @view model.output_weights[inference_position, :, 1]
+    end
 
     # Apply linear transformation (final dense layer)
-    linear_output = batched_mul(model.output_weights, feature_embedding)
-    
+    linear_output = batched_mul(output_weights, feature_embedding)
+    # output_weights is (output_dimension, final_embedding_dim, 1)
+    # so the batched_mul gives (output_dim, 1, batch_size)
+
     # Apply output scaling (fused operation)
     # scaled_output = @. model.output_scalers * tanh(linear_output)
     
@@ -207,6 +218,52 @@ end
 # Backward compatibility alias
 const model_forward_pass = predict_from_sequences # TODO change in inference.jl
 
-(m::SeqCNN)(seq; make_sparse = false) =
-    predict_from_sequences(m, seq; make_sparse = make_sparse)
+"""
+    (m::SeqCNN)(seq; make_sparse=false, linear_sum=false, inference_position=nothing)
+
+Call overload for `SeqCNN` models to perform a forward pass and generate predictions.
+
+# Arguments
+- `seq`: Input biological sequences (one-hot encoded or compatible format)
+- `make_sparse`: If true, applies sparsity-inducing normalization to convolutional filters (default: false)
+- `linear_sum`: (Unused in this model; included for compatibility)
+- `inference_position`: If provided, returns predictions for a specific output position (default: `nothing` for all outputs)
+
+# Returns
+- Model predictions as an array of shape `(output_dim, batch_size)` 
+- or `(batch_size,)` for single-output models
+
+# Notes
+This enables the model to be called as a function, e.g., `preds = model(sequences)`, for convenient ML-style usage.
+"""
+function (m::SeqCNN)(seq; 
+    make_sparse = false, 
+    linear_sum=false, 
+    inference_position=nothing
+    )
+    # no if else on linear_sum, because in this model outputs a linear sum
+    return predict_from_sequences(m, seq; 
+        make_sparse = make_sparse, 
+        inference_position = inference_position
+        )
+end
+
+"""
+    Base.getproperty(m::SeqCNN, sym::Symbol)
+
+Allow dot-access to `batch_size` as a virtual field for a `SeqCNN` model.
+
+- `model.batch_size` returns the batch size from the model's hyperparameters (`model.hp.batch_size`).
+- All other fields are accessed as usual.
+
+This enables convenient and familiar ML-style access to the batch size without storing redundant fields.
+"""
+function Base.getproperty(m::SeqCNN, sym::Symbol)
+    if sym === :batch_size
+        return m.hp.batch_size
+    else
+        # need this line otherwise all other fields won't be accessible
+        return getfield(m, sym)
+    end
+end
 
