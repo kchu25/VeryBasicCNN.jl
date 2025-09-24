@@ -116,7 +116,7 @@ function normalize_conv_filters_l2(filters; softmax_strength = SOFTMAX_ALPHA, us
 end
 
 
-function img_pass(model::SeqCNN, code; make_sparse=false)
+function img_pass(model, code; make_sparse=false)
     # Base layer pooling
     code_img = apply_pooling_to_code(
         code;
@@ -137,7 +137,12 @@ function img_pass(model::SeqCNN, code; make_sparse=false)
             identity = layer_idx > model.hp.pool_lvl_top,
         )
     end
-    return code_img
+    # Flatten to feature embedding vector
+    embedding_length = size(code_img, 1) * size(code_img, 2)
+    batch_size = size(code_img, 4)
+    feature_embedding = reshape(code_img, (embedding_length, 1, batch_size))
+
+    return feature_embedding
 end
 
 function cnn_feature_extraction(model::SeqCNN, sequences; 
@@ -146,19 +151,35 @@ function cnn_feature_extraction(model::SeqCNN, sequences;
         )
     # Base layer: PWM convolution
     code = model.pwms(sequences)
-    code_img = img_pass(model, code; make_sparse=make_sparse)
-
-    # Flatten to feature embedding vector
-    embedding_length = size(code_img, 1) * size(code_img, 2)
-    batch_size = size(code_img, 4)
-    feature_embedding = reshape(code_img, (embedding_length, 1, batch_size))
-
+    feature_embedding = img_pass(model, code; make_sparse=make_sparse)
+    
     if get_first_layer_code
         return feature_embedding, code
     end
     return feature_embedding
 end
 
+"""
+    get the output weights for a given position or all positions
+"""
+function determine_output_weights(model::SeqCNN; inference_position=nothing)
+    if isnothing(inference_position)
+        output_weights = model.output_weights
+    else
+        @assert 1 ≤ inference_position ≤ size(model.output_weights, 1) "inference_position out of bounds"
+        output_weights = @view model.output_weights[inference_position:inference_position, :, :]
+    end
+    return output_weights
+end
+
+function get_predictions(linear_output)
+    output_dim, batch_size = size(linear_output, 1), size(linear_output, 3)
+    # Return 1D for single output, 2D for multi-output
+    predictions = output_dim == 1 ? 
+        reshape(linear_output, (batch_size,)) : 
+        reshape(linear_output, (output_dim, batch_size))
+    return predictions
+end
 
 """
     predict_from_sequences(hyperparams, model, sequences; make_sparse=false)
@@ -181,32 +202,26 @@ function predict_from_sequences(model::SeqCNN, sequences;
     feature_embedding = cnn_feature_extraction(
         model, sequences; make_sparse = make_sparse) # (final_embedding_length, 1, batch_size)
 
-    if isnothing(inference_position)
-        output_weights = model.output_weights
-    else
-        @assert 1 ≤ inference_position ≤ size(model.output_weights, 1) "inference_position out of bounds"
-        output_weights = @view model.output_weights[inference_position, :, 1]
-    end
+    output_weights = determine_output_weights(model; inference_position=inference_position)
 
     # Apply linear transformation (final dense layer)
     linear_output = batched_mul(output_weights, feature_embedding)
     # output_weights is (output_dimension, final_embedding_dim, 1)
     # so the batched_mul gives (output_dim, 1, batch_size)
 
-    # Apply output scaling (fused operation)
-    # scaled_output = @. model.output_scalers * tanh(linear_output)
-    
-    # Reshape to standard prediction format (output_dim, batch_size)
-    output_dim, batch_size = size(linear_output, 1), size(linear_output, 3)
-
-    if output_dim == 1
-        predictions = reshape(linear_output, (batch_size,))
-    else
-        predictions = reshape(linear_output, (output_dim, batch_size))
-    end
-    
-    return predictions
+    return get_predictions(linear_output)
 end
+
+"""
+    predict_from_code(model, code; make_sparse=false, inference_position=nothing)
+"""
+function predict_from_code(model, code; make_sparse=false, inference_position=nothing)
+    feature_embedding = img_pass(model, code; make_sparse=make_sparse)
+    output_weights = determine_output_weights(model; inference_position=inference_position)
+    linear_output = batched_mul(output_weights, feature_embedding)
+    return get_predictions(linear_output)
+end
+
 
 # Backward compatibility alias
 const model_forward_pass = predict_from_sequences # TODO change in inference.jl
@@ -257,7 +272,14 @@ function Base.getproperty(m::SeqCNN, sym::Symbol)
     elseif sym === :num_img_layers
         return length(m.hp.num_img_filters)
     elseif sym === :first_layer_function
+        # return a function that takes the code (first layer) as an input
+        return function (x; kwargs...)
+           predict_from_code(m, x; kwargs...)
+        end
     elseif sym === :first_layer_code
+        # return a function that outputs the code (first layer)
+        # haven't done reshaping -- do it later if needed
+        return x->m.pwms(x)
     else
         # need this line otherwise all other fields won't be accessible
         return getfield(m, sym)
