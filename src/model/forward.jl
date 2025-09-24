@@ -115,7 +115,6 @@ function normalize_conv_filters_l2(filters; softmax_strength = SOFTMAX_ALPHA, us
     end
 end
 
-
 function img_pass(model, code; make_sparse=false)
     # Base layer pooling
     code_img = apply_pooling_to_code(
@@ -271,11 +270,9 @@ function Base.getproperty(m::SeqCNN, sym::Symbol)
         return m.hp.batch_size
     elseif sym === :num_img_layers
         return length(m.hp.num_img_filters)
-    elseif sym === :first_layer_function
+    elseif sym === :prediction_from_code_then_sum
         # return a function that takes the code (first layer) as an input
-        return function (x; kwargs...)
-           predict_from_code(m, x; kwargs...)
-        end
+        return (x; kwargs...) -> sum(predict_from_code(m, x; kwargs...))
     elseif sym === :first_layer_code
         # return a function that outputs the code (first layer)
         # haven't done reshaping -- do it later if needed
