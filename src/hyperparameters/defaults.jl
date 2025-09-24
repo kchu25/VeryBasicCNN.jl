@@ -41,7 +41,7 @@ Configuration struct for hyperparameter ranges with current defaults.
     num_img_layers_range = 3:7
     pfm_length_range = 3:15
     num_base_filters_range = 72:12:512
-    conv_filter_range = 256:32:512
+    conv_filter_range = 128:32:512
     conv_filter_height_range = 1:5
     
     # Pooling ranges
