@@ -38,5 +38,7 @@ include("model/loss.jl")          # Loss computation
 include("model/save.jl")     # Save/load model parameters
 
 
+export model2cpu, model2gpu
+
 
 end
