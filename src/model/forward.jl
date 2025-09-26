@@ -161,12 +161,12 @@ end
 """
     get the output weights for a given position or all positions
 """
-function determine_output_weights(model::SeqCNN; inference_position=nothing)
-    if isnothing(inference_position)
+function determine_output_weights(model::SeqCNN; predict_position=nothing)
+    if isnothing(predict_position)
         output_weights = model.output_weights
     else
-        @assert 1 ≤ inference_position ≤ size(model.output_weights, 1) "inference_position out of bounds"
-        output_weights = @view model.output_weights[inference_position:inference_position, :, :]
+        @assert 1 ≤ predict_position ≤ size(model.output_weights, 1) "predict_position out of bounds"
+        output_weights = @view model.output_weights[predict_position:predict_position, :, :]
     end
     return output_weights
 end
@@ -196,12 +196,12 @@ Complete forward pass: CNN feature extraction → linear transformation → fina
 """
 function predict_from_sequences(model::SeqCNN, sequences; 
         make_sparse = false, 
-        inference_position=nothing)
+        predict_position=nothing)
     # Extract CNN features from sequences
     feature_embedding = cnn_feature_extraction(
         model, sequences; make_sparse = make_sparse) # (final_embedding_length, 1, batch_size)
 
-    output_weights = determine_output_weights(model; inference_position=inference_position)
+    output_weights = determine_output_weights(model; predict_position=predict_position)
 
     # Apply linear transformation (final dense layer)
     linear_output = batched_mul(output_weights, feature_embedding)
@@ -214,9 +214,9 @@ end
 """
     predict_from_code(model, code; make_sparse=false, inference_position=nothing)
 """
-function predict_from_code(model, code; make_sparse=false, inference_position=nothing)
+function predict_from_code(model, code; make_sparse=false, predict_position=nothing)
     feature_embedding = img_pass(model, code; make_sparse=make_sparse)
-    output_weights = determine_output_weights(model; inference_position=inference_position)
+    output_weights = determine_output_weights(model; predict_position=predict_position)
     linear_output = batched_mul(output_weights, feature_embedding)
     return get_predictions(linear_output)
 end
@@ -226,7 +226,7 @@ end
 const model_forward_pass = predict_from_sequences # TODO change in inference.jl
 
 """
-    (m::SeqCNN)(seq; make_sparse=false, linear_sum=false, inference_position=nothing)
+    (m::SeqCNN)(seq; make_sparse=false, linear_sum=false, predict_position=nothing)
 
 Call overload for `SeqCNN` models to perform a forward pass and generate predictions.
 
@@ -234,7 +234,7 @@ Call overload for `SeqCNN` models to perform a forward pass and generate predict
 - `seq`: Input biological sequences (one-hot encoded or compatible format)
 - `make_sparse`: If true, applies sparsity-inducing normalization to convolutional filters (default: false)
 - `linear_sum`: (Unused in this model; included for compatibility)
-- `inference_position`: If provided, returns predictions for a specific output position (default: `nothing` for all outputs)
+- `predict_position`: If provided, returns predictions for a specific output position (default: `nothing` for all outputs)
 
 # Returns
 - Model predictions as an array of shape `(output_dim, batch_size)` 
@@ -246,12 +246,19 @@ This enables the model to be called as a function, e.g., `preds = model(sequence
 function (m::SeqCNN)(seq; 
     make_sparse = false, 
     linear_sum=false, 
-    inference_position=nothing
+    predict_position=nothing
     )
     # no if else on linear_sum, because in this model outputs a linear sum
+    if linear_sum
+        @assert !isnothing(predict_position) "linear_sum requires specifying predict_position"
+        return sum(predict_from_sequences(m, seq; 
+            make_sparse = make_sparse, 
+            predict_position = predict_position
+        ))
+    end
     return predict_from_sequences(m, seq; 
         make_sparse = make_sparse, 
-        inference_position = inference_position
+        predict_position = predict_position
         )
 end
 
@@ -266,10 +273,14 @@ Allow dot-access to `batch_size` as a virtual field for a `SeqCNN` model.
 This enables convenient and familiar ML-style access to the batch size without storing redundant fields.
 """
 function Base.getproperty(m::SeqCNN, sym::Symbol)
-    if sym === :batch_size
+    if sym === :batchsize
         return m.hp.batch_size
     elseif sym === :num_img_layers
         return length(m.hp.num_img_filters)
+    elseif sym === :final_nonlinearity
+        return identity
+    elseif sym === :is_predicting_a_vector
+        return true
     elseif sym === :prediction_from_code_then_sum
         # return a function that takes the code (first layer) as an input
         return (x; kwargs...) -> sum(predict_from_code(m, x; kwargs...))
